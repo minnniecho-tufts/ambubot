@@ -12,3 +12,7 @@ config.json
 # Ignore system files (Mac & VS Code)
 .DS_Store
 .vscode/
+
+assignment1-bot.py
+example_generate.py
+
