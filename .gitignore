@@ -1,0 +1,14 @@
+# Ignore Python cache files
+__pycache__/
+*.pyc
+*.pyo
+
+# Ignore environment variables
+.env
+
+# Ignore config files containing secrets
+config.json
+
+# Ignore system files (Mac & VS Code)
+.DS_Store
+.vscode/
