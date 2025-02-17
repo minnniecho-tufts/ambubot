@@ -7,9 +7,6 @@ from llmproxy import generate, pdf_upload
 pdf_path = os.getenv("PDF_PATH", "HealingRemedies-compressed4mb.pdf")  # Default to a filename if not set
 session_id_ = os.getenv("SESSION_ID", "ambubot-home-remedies")
 
-print("API Key:", os.getenv("apiKey"))  # Should NOT be None
-print("Endpoint:", os.getenv("endPoint"))  # Should print the correct URL
-print("Session ID:", os.getenv("SESSION_ID"))  # Should match what you set in Koyeb
 
 # Initialize session state for PDF upload
 if "pdf_uploaded" not in st.session_state:
