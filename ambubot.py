@@ -8,7 +8,15 @@ pdf_path = os.getenv("PDF_PATH", "HealingRemedies-compressed4mb.pdf")
 api_key = os.getenv("apiKey")
 end_point = os.getenv("endPoint")
 session_id_ = os.getenv("SESSION_ID", "ambubot-home-remedies")
+# Debugging: Print environment variables
+print("🔍 Debugging Environment Variables:")
+print(f"API Key: {os.getenv('apiKey')}")
+print(f"Endpoint: {os.getenv('endPoint')}")
+print(f"Session ID: {os.getenv('SESSION_ID')}")
 
+# Ensure that required variables exist
+if not os.getenv("endPoint"):
+    raise ValueError("❌ ERROR: The 'endPoint' environment variable is missing or not set in Koyeb!")
 # Initialize session state for PDF upload
 if "pdf_uploaded" not in st.session_state:
     st.session_state.pdf_uploaded = False  # Set initial value
