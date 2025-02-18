@@ -90,20 +90,8 @@ def is_health_related(user_input):
 #     except Exception as e:
 #         return None, f"Error retrieving location: {e}"
 def get_user_location():
-    """Fetches the user's approximate location using freegeoip.app."""
-    try:
-        response = requests.get("https://freegeoip.app/json/", timeout=5)
-        data = response.json()
-
-        if "latitude" in data and "longitude" in data:
-            lat, lon = data["latitude"], data["longitude"]
-            city, region, country = data.get("city", "Unknown"), data.get("region_name", "Unknown"), data.get("country_name", "Unknown")
-            return f"{lat},{lon}", f"📍 Detected your location: {city}, {region}, {country}"
-        else:
-            raise ValueError("Location API did not return coordinates")
-
-    except Exception as e:
-        return None, f"❌ Unable to detect location automatically. Please enter manually."
+    """Prompts user to manually enter their location."""
+    return st.text_input("📍 Enter your location (City, State/Country)"), "Please enter your location."
 
 
 
@@ -297,16 +285,20 @@ def main():
         advice = analyze_symptoms(symptoms_details, st.session_state.duration, st.session_state.severity)
         st.success(advice)
 
-        if st.session_state.severity >= 0 or "chest pain" in st.session_state.symptoms.lower() or "difficulty breathing" in st.session_state.symptoms.lower():
+        if st.session_state.severity >= 0:
             st.write("📍 **Finding Nearby Hospitals...**")
-            location, location_message = get_user_location()
-            st.info(location_message)
-            if location:
-                hospitals = find_nearest_hospitals_osm(location)
-                for hospital in hospitals:
-                    st.success(hospital)
-            else:
-                st.error("❌ Unable to get location. Please enter manually.")
+            user_location = st.text_input("📍 Enter your city and state/country (e.g., 'Boston, MA' or 'London, UK')")
+
+            if st.button("Find Hospitals"):
+                if user_location:
+                    st.info(f"📍 Searching for hospitals near: {user_location}")
+                    hospitals = find_nearest_hospitals_osm(user_location)  # Pass user input instead of API location detection
+
+                    for hospital in hospitals:
+                        st.success(hospital)
+                else:
+                    st.error("❌ Please enter a valid location.")
+
 
         st.button("Restart", on_click=lambda: st.session_state.update(step=1, symptoms="", followup_answers={}, duration="", severity=5))
         
