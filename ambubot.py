@@ -1,5 +1,6 @@
 import streamlit as st
 import requests
+import time
 import os
 from llmproxy import generate, pdf_upload   
 
@@ -97,42 +98,42 @@ def get_user_location():
 
 
 # Function to find nearby hospitals
-def find_nearest_hospitals_osm(location):
-    """Fetches hospitals within a 20km radius using OpenStreetMap Overpass API."""
-    lat, lon = location.split(",")
+# def find_nearest_hospitals_osm(location):
+#     """Fetches hospitals within a 20km radius using OpenStreetMap Overpass API."""
+#     lat, lon = location.split(",")
 
-    overpass_query = f"""
-    [out:json];
-    (
-      node["amenity"="hospital"](around:20000, {lat}, {lon});
-      node["healthcare"="hospital"](around:20000, {lat}, {lon});
-      node["building"="hospital"](around:20000, {lat}, {lon});
-      node["urgent_care"="yes"](around:20000, {lat}, {lon});
-    );
-    out center;
-    """
-    overpass_url = "https://overpass-api.de/api/interpreter"
+#     overpass_query = f"""
+#     [out:json];
+#     (
+#       node["amenity"="hospital"](around:20000, {lat}, {lon});
+#       node["healthcare"="hospital"](around:20000, {lat}, {lon});
+#       node["building"="hospital"](around:20000, {lat}, {lon});
+#       node["urgent_care"="yes"](around:20000, {lat}, {lon});
+#     );
+#     out center;
+#     """
+#     overpass_url = "https://overpass-api.de/api/interpreter"
 
-    try:
-        response = requests.get(overpass_url, params={"data": overpass_query})
-        hospitals = response.json().get("elements", [])
+#     try:
+#         response = requests.get(overpass_url, params={"data": overpass_query})
+#         hospitals = response.json().get("elements", [])
 
-        if not hospitals:
-            return ["❌ No hospitals found nearby. Please call emergency services."]
+#         if not hospitals:
+#             return ["❌ No hospitals found nearby. Please call emergency services."]
 
-        # **Exclude Children's & Mental Health hospitals**
-        excluded_keywords = ["child", "pediatric", "mental", "psychiatric", "rehabilitation"]
+#         # **Exclude Children's & Mental Health hospitals**
+#         excluded_keywords = ["child", "pediatric", "mental", "psychiatric", "rehabilitation"]
 
-        filtered_hospitals = [h.get("tags", {}).get("name", "Unnamed Hospital") for h in hospitals]
-        filtered_hospitals = [h for h in filtered_hospitals if h and not any(ex in h.lower() for ex in excluded_keywords)]
+#         filtered_hospitals = [h.get("tags", {}).get("name", "Unnamed Hospital") for h in hospitals]
+#         filtered_hospitals = [h for h in filtered_hospitals if h and not any(ex in h.lower() for ex in excluded_keywords)]
         
-        if not filtered_hospitals:
-            return ["❌ No general hospitals found nearby. Please call emergency services."]
+#         if not filtered_hospitals:
+#             return ["❌ No general hospitals found nearby. Please call emergency services."]
 
-        return [f"🏥 {h}" for h in filtered_hospitals[:3]]  # Return list of hospitals
+#         return [f"🏥 {h}" for h in filtered_hospitals[:3]]  # Return list of hospitals
 
-    except Exception as e:
-        return [f"⚠️ Error retrieving hospital data: {e}"]
+#     except Exception as e:
+#         return [f"⚠️ Error retrieving hospital data: {e}"]
 
 # Function to analyze symptoms
 def analyze_symptoms(symptoms, duration, severity):
@@ -230,6 +231,71 @@ def is_followup_related(question, user_answer):
     return response_text.lower() == "yes"
 
 
+def get_coordinates_from_location(location):
+    """Convert user-entered location to latitude and longitude using OpenStreetMap's Nominatim API with retries."""
+    try:
+        url = f"https://nominatim.openstreetmap.org/search?q={location}&format=json"
+        
+        headers = {"User-Agent": "AmbuBot/1.0"}  # Avoid Nominatim rejecting requests
+        response = requests.get(url, headers=headers, timeout=5)
+        data = response.json()
+
+        # Retry with a more detailed query if the first attempt fails
+        if not data and "," in location:
+            detailed_query = location + ", USA"
+            response = requests.get(f"https://nominatim.openstreetmap.org/search?q={detailed_query}&format=json", headers=headers, timeout=5)
+            data = response.json()
+
+        if data:
+            lat = data[0]["lat"]
+            lon = data[0]["lon"]
+            return lat, lon
+        else:
+            return None, None
+    except Exception as e:
+        return None, None
+    
+def find_nearest_hospitals_osm(location):
+    """Fetch hospitals within a 20km radius using OpenStreetMap Overpass API after converting city to coordinates."""
+    
+    # Convert city name to lat/lon
+    lat, lon = get_coordinates_from_location(location)
+    
+    if not lat or not lon:
+        return ["❌ Unable to find coordinates for the entered location. Please check your input."]
+
+    overpass_query = f"""
+    [out:json];
+    (
+      node["amenity"="hospital"](around:20000, {lat}, {lon});
+      node["healthcare"="hospital"](around:20000, {lat}, {lon});
+      node["building"="hospital"](around:20000, {lat}, {lon});
+      node["urgent_care"="yes"](around:20000, {lat}, {lon});
+    );
+    out center;
+    """
+    overpass_url = "https://overpass-api.de/api/interpreter"
+
+    try:
+        response = requests.get(overpass_url, params={"data": overpass_query})
+        hospitals = response.json().get("elements", [])
+
+        if not hospitals:
+            return ["❌ No hospitals found nearby. Please call emergency services."]
+
+        # **Exclude Children's & Mental Health hospitals**
+        excluded_keywords = ["child", "pediatric", "mental", "psychiatric", "rehabilitation"]
+
+        filtered_hospitals = [h.get("tags", {}).get("name", "Unnamed Hospital") for h in hospitals]
+        filtered_hospitals = [h for h in filtered_hospitals if h and not any(ex in h.lower() for ex in excluded_keywords)]
+        
+        if not filtered_hospitals:
+            return ["❌ No general hospitals found nearby. Please call emergency services."]
+
+        return [f"🏥 {h}" for h in filtered_hospitals[:3]]  # Return list of hospitals
+
+    except Exception as e:
+        return [f"⚠️ Error retrieving hospital data: {e}"]
 
 # Streamlit UI for chatbot
 def main():
@@ -272,9 +338,14 @@ def main():
         st.session_state.duration = st.text_input("How long have you had these symptoms?", placeholder="e.g., 1 day, 3 days, 1 week")
         st.session_state.severity = st.slider("How severe are your symptoms? (1 = mild, 10 = severe)", 1, 10, 5)
 
+        # **NEW**: Ask for user location in Step 3 (BEFORE clicking "Get Advice")
+        st.session_state.user_location = st.text_input("📍 Enter your city and state/country (e.g., 'Boston, MA' or 'London, UK')")
+
         if st.button("Get Advice"):
             if not st.session_state.duration or not is_followup_related("How long have you had these symptoms?", st.session_state.duration):
                 st.warning("⚠️ Please enter a valid duration (e.g., 1 day, 3 days, 1 week).")
+            elif not st.session_state.user_location:
+                st.warning("⚠️ Please enter your location to find hospitals.")
             else:
                 st.session_state.step = 4
                 st.rerun()
@@ -287,19 +358,19 @@ def main():
 
         if st.session_state.severity >= 0:
             st.write("📍 **Finding Nearby Hospitals...**")
-            user_location = st.text_input("📍 Enter your city and state/country (e.g., 'Boston, MA' or 'London, UK')")
 
-            if st.button("Find Hospitals"):
-                if user_location:
-                    st.info(f"📍 Searching for hospitals near: {user_location}")
-                    hospitals = find_nearest_hospitals_osm(user_location)  # Pass user input instead of API location detection
+            if st.session_state.user_location:
+                st.info(f"📍 Searching for hospitals near: {st.session_state.user_location}")
+                hospitals = find_nearest_hospitals_osm(st.session_state.user_location)  # Pass user input instead of API location detection
 
+                if hospitals:
                     for hospital in hospitals:
                         st.success(hospital)
                 else:
-                    st.error("❌ Please enter a valid location.")
-
-
+                    st.error("❌ No hospitals found. Please check the location or call emergency services.")
+            else:
+                st.error("❌ Please enter a valid location.")
+                
         st.button("Restart", on_click=lambda: st.session_state.update(step=1, symptoms="", followup_answers={}, duration="", severity=5))
         
 if __name__ == "__main__":
