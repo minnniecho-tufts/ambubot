@@ -4,9 +4,10 @@ import os
 from llmproxy import generate, pdf_upload   
 
 # Get environment variables
-pdf_path = os.getenv("PDF_PATH", "HealingRemedies-compressed4mb.pdf")  # Default to a filename if not set
+pdf_path = os.getenv("PDF_PATH", "HealingRemedies-compressed4mb.pdf")  
+api_key = os.getenv("apiKey")
+end_point = os.getenv("endPoint")
 session_id_ = os.getenv("SESSION_ID", "ambubot-home-remedies")
-
 
 # Initialize session state for PDF upload
 if "pdf_uploaded" not in st.session_state:
