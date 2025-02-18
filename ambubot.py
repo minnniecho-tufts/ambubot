@@ -90,21 +90,21 @@ def is_health_related(user_input):
 #     except Exception as e:
 #         return None, f"Error retrieving location: {e}"
 def get_user_location():
-    """Fetches the user's approximate location using an external API."""
+    """Fetches the user's approximate location using freegeoip.app."""
     try:
-        # Use ip-api.com instead of ipinfo.io
-        response = requests.get("http://ip-api.com/json/", timeout=5)
+        response = requests.get("https://freegeoip.app/json/", timeout=5)
         data = response.json()
 
-        if data.get("status") == "success":
-            lat, lon = data["lat"], data["lon"]
-            city, region, country = data["city"], data["regionName"], data["country"]
+        if "latitude" in data and "longitude" in data:
+            lat, lon = data["latitude"], data["longitude"]
+            city, region, country = data.get("city", "Unknown"), data.get("region_name", "Unknown"), data.get("country_name", "Unknown")
             return f"{lat},{lon}", f"📍 Detected your location: {city}, {region}, {country}"
         else:
-            raise ValueError("Location API returned an error")
+            raise ValueError("Location API did not return coordinates")
 
     except Exception as e:
         return None, f"❌ Unable to detect location automatically. Please enter manually."
+
 
 
 
