@@ -8,15 +8,8 @@ pdf_path = os.getenv("PDF_PATH", "HealingRemedies-compressed4mb.pdf")
 api_key = os.getenv("apiKey")
 end_point = os.getenv("endPoint")
 session_id_ = os.getenv("SESSION_ID", "ambubot-home-remedies")
-# Debugging: Print environment variables
-print("🔍 Debugging Environment Variables:")
-print(f"API Key: {os.getenv('apiKey')}")
-print(f"Endpoint: {os.getenv('endPoint')}")
-print(f"Session ID: {os.getenv('SESSION_ID')}")
 
-# Ensure that required variables exist
-if not os.getenv("endPoint"):
-    raise ValueError("❌ ERROR: The 'endPoint' environment variable is missing or not set in Koyeb!")
+
 # Initialize session state for PDF upload
 if "pdf_uploaded" not in st.session_state:
     st.session_state.pdf_uploaded = False  # Set initial value
@@ -84,18 +77,36 @@ def is_health_related(user_input):
 
 
 
-# Function to get user location
+# # Function to get user location
+# def get_user_location():
+#     """Fetches the user's approximate location based on IP address."""
+#     try:
+#         response = requests.get("https://ipinfo.io/json")
+#         data = response.json()
+#         loc = data.get("loc", "")  # Example: "42.4184,-71.1062"
+#         if not loc:
+#             return None, "Could not determine location. Please enter manually."
+#         return loc, f"📍 Detected your location: {data.get('city')}, {data.get('region')}, {data.get('country')}"
+#     except Exception as e:
+#         return None, f"Error retrieving location: {e}"
 def get_user_location():
-    """Fetches the user's approximate location based on IP address."""
+    """Fetches the user's approximate location using an external API."""
     try:
-        response = requests.get("https://ipinfo.io/json")
+        # Use ip-api.com instead of ipinfo.io
+        response = requests.get("http://ip-api.com/json/", timeout=5)
         data = response.json()
-        loc = data.get("loc", "")  # Example: "42.4184,-71.1062"
-        if not loc:
-            return None, "Could not determine location. Please enter manually."
-        return loc, f"📍 Detected your location: {data.get('city')}, {data.get('region')}, {data.get('country')}"
+
+        if data.get("status") == "success":
+            lat, lon = data["lat"], data["lon"]
+            city, region, country = data["city"], data["regionName"], data["country"]
+            return f"{lat},{lon}", f"📍 Detected your location: {city}, {region}, {country}"
+        else:
+            raise ValueError("Location API returned an error")
+
     except Exception as e:
-        return None, f"Error retrieving location: {e}"
+        return None, f"❌ Unable to detect location automatically. Please enter manually."
+
+
 
 # Function to find nearby hospitals
 def find_nearest_hospitals_osm(location):
