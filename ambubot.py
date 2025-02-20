@@ -100,18 +100,17 @@ def find_nearest_hospitals_osm(location):
 
 @app.route('/query', methods=['POST'])
 def main():
-    """Handles conversation flow with separate user_step tracking."""
+    """Handles conversation flow with proper step tracking."""
     data = request.get_json()
     user = data.get("user_name", "Unknown")
     message = data.get("text", "").strip()
 
     print(f"Message from {user}: {message}")
 
-    # Initialize user state if not found
-    if user not in user_data:
+    # Ensure user step tracking exists
+    if user not in user_step:
+        user_step[user] = 0  # Initialize step
         user_data[user] = {"symptoms": "", "followups": [], "answers": []}
-        user_step[user] = 0  # Start at step 0
-        print('hi')
 
     print(f"User step: {user_step[user]}")
 
