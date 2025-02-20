@@ -6,6 +6,7 @@ from llmproxy import generate, pdf_upload
 app = Flask(__name__)
 
 user_data = { }
+user_step = { }
 
 pdf_path = os.getenv("PDF_PATH", "HealingRemedies-compressed4mb.pdf")
 session_id_ = os.getenv("SESSION_ID", "ambubot-home-remedies")
@@ -99,49 +100,48 @@ def find_nearest_hospitals_osm(location):
 
 @app.route('/query', methods=['POST'])
 def main():
-    
+    """Handles conversation flow with separate user_step tracking."""
     data = request.get_json()
     user = data.get("user_name", "Unknown")
     message = data.get("text", "").strip()
 
     print(f"Message from {user}: {message}")
 
+    # Initialize user state if not found
     if user not in user_data:
-        user_data[user] = {"step": 0, "symptoms": "", "followups": [], "answers": []}
+        user_data[user] = {"symptoms": "", "followups": [], "answers": []}
+        user_step[user] = 0  # Start at step 0
 
-    user_state = user_data[user]
-    print(user_state["step"])
+    print(f"User step: {user_step[user]}")
 
-    # Step 0: First Message - Initial Greeting
-    if user_state["step"] == 0:
+    ### **Step 0: Initial Greeting and Symptom Collection**
+    if user_step[user] == 0:
         if not is_health_related(message):
             return jsonify({"text": "🏥 AMBUBOT - Virtual Healthcare Assistant \n 🔹 HELLO! I'm Dr. Doc Bot. Describe your symptoms, and I'll provide easy at-home remedies! \n 📝 Enter your symptoms below: "})
         
-        # Store symptoms and generate follow-ups
-        user_state["symptoms"] = message
-        user_state["followups"] = ask_followup(message)
-        user_state["step"] += 1  # Move to the follow-up phase
-        
-        return jsonify({"text": f"🤖 Follow-up question 1: {user_state['followups'][0]}"})
+        # Store symptoms and generate follow-up questions
+        user_data[user]["symptoms"] = message
+        user_data[user]["followups"] = ask_followup(message)
+        user_step[user] = 1  # Move to the follow-up phase
 
-    # Step 1, 2, 3: Answer Follow-Up Questions
-    if 1 <= user_state["step"] <= 3:
-        user_state["answers"].append(message)
+        return jsonify({"text": f"🤖 Follow-up question 1: {user_data[user]['followups'][0]}"})
 
-        if user_state["step"] < 3:
-            # Ask the next follow-up question
-            next_question = user_state["followups"][user_state["step"]]
-            user_state["step"] += 1
-            return jsonify({"text": f"🤖 Follow-up question {user_state['step']}: {next_question}"})
-        
-        # Step 4: Provide Remedy After Last Follow-Up
-        user_state["step"] = 4
-        remedy = analyze_symptoms(" ".join([user_state["symptoms"]] + user_state["answers"]))
+    ### **Step 1-3: Handling Follow-Up Answers**
+    if 1 <= user_step[user] <= 3:
+        user_data[user]["answers"].append(message)  # Store user's answer
 
-        
+        if user_step[user] < 3:
+            next_question = user_data[user]["followups"][user_step[user]]  # Get next question
+            user_step[user] += 1  # Move to the next follow-up question
+            return jsonify({"text": f"🤖 Follow-up question {user_step[user]}: {next_question}"})
+
+        # **Step 4: Provide Remedy After Last Follow-Up**
+        remedy = analyze_symptoms(" ".join([user_data[user]["symptoms"]] + user_data[user]["answers"]))
+
         # Reset conversation state after providing the remedy
-        user_data.pop(user, None)
-        
+        del user_data[user]  # Remove user conversation data
+        del user_step[user]  # Remove user step tracking
+
         return jsonify({"text": f"🩺 {remedy}"})
 
     return jsonify({"text": "⚠️ Something went wrong. Please start over."})
