@@ -101,13 +101,47 @@ def find_nearest_hospitals_osm(location):
     except Exception as e:
         return [f"⚠️ Error retrieving hospital data: {e}"]
 
+# @app.route('/query', methods=['POST'])
+# def main():
+#     data = request.get_json()
+#     user = data.get("user_name", "Unknown")
+#     message = data.get("text", "").strip()
+
+#     print(f"Message from {user}: {message}")
+
+#     # Ignore bot messages and empty inputs
+#     if data.get("bot") or not message:
+#         return jsonify({"status": "ignored"})
+
+#     # Check if the message is health-related
+#     if not is_health_related(message):
+#         return jsonify({"text": "🤖 I'm here for healthcare-related questions. Ask me about symptoms and remedies!"})
+
+#     # Ask follow-up questions
+#     followup_questions = ask_followup(message)
+#     if followup_questions:
+#         return jsonify({"text": f"🤖 Follow-up questions:\n\n- " + "\n- ".join(followup_questions)})
+
+#     # If no follow-ups, analyze symptoms directly
+#     remedy = analyze_symptoms(message, "unknown duration", "unknown severity")
+#     return jsonify({"text": f"🩺 {remedy}"})
+
 @app.route('/query', methods=['POST'])
 def main():
+    """Processes symptom queries and returns a greeting first, then asks follow-up questions."""
     data = request.get_json()
     user = data.get("user_name", "Unknown")
     message = data.get("text", "").strip()
 
     print(f"Message from {user}: {message}")
+
+    # First response when the user hasn't entered symptoms yet
+    if not message:
+        return jsonify({
+            "text": "🏥 AMBUBOT - Virtual Healthcare Assistant",
+            "message": "🔹 HELLO! I'm Dr. Doc Bot. Describe your symptoms, and I'll provide easy at-home remedies & nearby hospitals!",
+            "prompt": "📝 Enter your symptoms below:"
+        })
 
     # Ignore bot messages and empty inputs
     if data.get("bot") or not message:
@@ -117,14 +151,19 @@ def main():
     if not is_health_related(message):
         return jsonify({"text": "🤖 I'm here for healthcare-related questions. Ask me about symptoms and remedies!"})
 
-    # Ask follow-up questions
+    # Ask follow-up questions (only on the first symptom input)
     followup_questions = ask_followup(message)
     if followup_questions:
-        return jsonify({"text": f"🤖 Follow-up questions:\n\n- " + "\n- ".join(followup_questions)})
+         return jsonify({"text": f"🤖 Follow-up questions:\n\n- " + "\n- ".join(followup_questions)})
 
     # If no follow-ups, analyze symptoms directly
     remedy = analyze_symptoms(message, "unknown duration", "unknown severity")
-    return jsonify({"text": f"🩺 {remedy}"})
+    return jsonify({
+        "text": "🏥 AMBUBOT - Virtual Healthcare Assistant",
+        "message": "🔹 HELLO! I'm Dr. Doc Bot. Describe your symptoms, and I'll provide easy at-home remedies & nearby hospitals!",
+        "prompt": "📝 Enter your symptoms below:",
+        "remedy": remedy
+    })
 
 @app.route('/location', methods=['POST'])
 def location_query():
