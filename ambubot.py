@@ -5,6 +5,8 @@ from llmproxy import generate, pdf_upload
 
 app = Flask(__name__)
 
+user_data = {}
+
 # Load environment variables
 pdf_path = os.getenv("PDF_PATH", "HealingRemedies-compressed4mb.pdf")
 session_id_ = os.getenv("SESSION_ID", "ambubot-home-remedies")
@@ -27,6 +29,22 @@ def is_health_related(user_input):
         temperature=0.0,
         lastk=0,
         session_id="IntentCheck",
+        rag_usage=False
+    )
+    return response.get("response", "").strip().lower() == "yes"
+
+def is_answer_relevant(question, answer):
+    """Checks if the user's answer is relevant to the question."""
+    response = generate(
+        model="4o-mini",
+        system="""
+            Determine if the provided answer is relevant to the given question.
+            Respond with only 'Yes' or 'No'.
+        """,
+        query=f"Question: '{question}'\nAnswer: '{answer}'\nIs the answer relevant?",
+        temperature=0.0,
+        lastk=0,
+        session_id="RelevanceCheck",
         rag_usage=False
     )
     return response.get("response", "").strip().lower() == "yes"
@@ -128,7 +146,7 @@ def find_nearest_hospitals_osm(location):
 
 @app.route('/query', methods=['POST'])
 def main():
-    """Handles symptom queries, asks 3 follow-up questions sequentially, ensuring valid answers before proceeding."""
+    """Handles user queries, ensuring 3 follow-up questions before providing a remedy."""
     data = request.get_json()
     user = data.get("user_name", "Unknown")
     message = data.get("text", "").strip()
@@ -136,55 +154,45 @@ def main():
     print(f"Message from {user}: {message}")
 
     # Initialize user session if not set
-    if "conversation_state" not in session:
-        session["conversation_state"] = {}
-    user_state = session["conversation_state"].get(user, {})
+    if user not in user_data:
+        user_data[user] = {
+            "symptoms": message,
+            "followups": ask_followup(message),
+            "followup_count": 0,
+            "followup_answers": []
+        }
+        return jsonify({
+            "text": "🏥 AMBUBOT - Virtual Healthcare Assistant",
+            "message": "🔹 HELLO! I'm Dr. Doc Bot. Describe your symptoms, and I'll provide easy at-home remedies & nearby hospitals!",
+            "follow_up": f"🤖 Follow-up question 1: {user_data[user]['followups'][0]}"
+        })
 
-    # Default response structure
-    response_data = {
-        "text": "🏥 AMBUBOT - Virtual Healthcare Assistant",
-        "message": "🔹 HELLO! I'm Dr. Doc Bot. Describe your symptoms, and I'll provide easy at-home remedies & nearby hospitals!",
-        "prompt": "📝 Enter your symptoms below:"
-    }
-
-    # If first message, store the symptom and generate follow-ups
-    if "symptoms" not in user_state:
-        user_state["symptoms"] = message
-        user_state["followups"] = ask_followup(message)
-        user_state["followup_count"] = 0
-        user_state["followup_answers"] = []
-        session["conversation_state"][user] = user_state
-        response_data["follow_up"] = f"🤖 Follow-up question 1: {user_state['followups'][0]}"
-        return jsonify(response_data)
-
-    # Get current follow-up question
-    current_question_index = user_state["followup_count"]
-    current_question = user_state["followups"][current_question_index]
-
-    # Check if the answer is relevant
+    # Get user's stored state
+    user_state = user_data[user]
+    followup_count = user_state["followup_count"]
+    
+    # Ensure answer is relevant
+    current_question = user_state["followups"][followup_count]
     if not is_answer_relevant(current_question, message):
-        response_data["error"] = f"⚠️ Your answer doesn't seem relevant to: '{current_question}'. Please answer properly."
-        return jsonify(response_data)
+        return jsonify({"error": f"⚠️ Your answer doesn't seem relevant to: '{current_question}'. Please answer properly."})
 
     # Store the valid answer
     user_state["followup_answers"].append(message)
     user_state["followup_count"] += 1
-    session["conversation_state"][user] = user_state
 
-    # If still more follow-ups needed, ask the next one
+    # Ask the next follow-up question if needed
     if user_state["followup_count"] < 3:
         next_question = user_state["followups"][user_state["followup_count"]]
-        response_data["follow_up"] = f"🤖 Follow-up question {user_state['followup_count'] + 1}: {next_question}"
-        return jsonify(response_data)
+        return jsonify({"follow_up": f"🤖 Follow-up question {user_state['followup_count'] + 1}: {next_question}"})
 
     # After three valid follow-ups, provide remedy
     remedy = analyze_symptoms(user_state["symptoms"], user_state["followup_answers"])
-    response_data["remedy"] = f"🩺 {remedy}"
+    response = {"remedy": f"🩺 {remedy}"}
 
-    # Reset user session after completing the conversation
-    session["conversation_state"].pop(user, None)
+    # Remove user data after completion
+    del user_data[user]
 
-    return jsonify(response_data)
+    return jsonify(response)
 
 @app.route('/location', methods=['POST'])
 def location_query():
