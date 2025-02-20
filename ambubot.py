@@ -146,53 +146,70 @@ def find_nearest_hospitals_osm(location):
 
 @app.route('/query', methods=['POST'])
 def main():
-    """Handles user queries, ensuring 3 follow-up questions before providing a remedy."""
+    """Handles symptom queries, ensuring the welcome message is sent only once per user."""
     data = request.get_json()
     user = data.get("user_name", "Unknown")
     message = data.get("text", "").strip()
 
     print(f"Message from {user}: {message}")
 
-    # Initialize user session if not set
+    # If user is new, initialize their state
     if user not in user_data:
         user_data[user] = {
-            "symptoms": message,
-            "followups": ask_followup(message),
+            "welcomed": False,  # Track if the user has seen the welcome message
+            "symptoms": None,
+            "followups": [],
             "followup_count": 0,
             "followup_answers": []
         }
-        return jsonify({
-            "text": "🏥 AMBUBOT - Virtual Healthcare Assistant",
-            "message": "🔹 HELLO! I'm Dr. Doc Bot. Describe your symptoms, and I'll provide easy at-home remedies & nearby hospitals!",
-            "follow_up": f"🤖 Follow-up question 1: {user_data[user]['followups'][0]}"
-        })
 
-    # Get user's stored state
-    user_state = user_data[user]
-    followup_count = user_state["followup_count"]
-    
-    # Ensure answer is relevant
-    current_question = user_state["followups"][followup_count]
+    response_data = {}
+
+    # If this is the user's first query, send the welcome message
+    if not user_data[user]["welcomed"]:
+        response_data["text"] = "🏥 AMBUBOT - Virtual Healthcare Assistant"
+        response_data["message"] = "🔹 HELLO! I'm Dr. Doc Bot. Describe your symptoms, and I'll provide easy at-home remedies & nearby hospitals!"
+        response_data["prompt"] = "📝 Enter your symptoms below:"
+        user_data[user]["welcomed"] = True  # Mark user as welcomed
+        return jsonify(response_data)
+
+    # If first message after welcome, store the symptom and generate follow-ups
+    if user_data[user]["symptoms"] is None:
+        user_data[user]["symptoms"] = message
+        user_data[user]["followups"] = ask_followup(message)
+        user_data[user]["followup_count"] = 0
+        user_data[user]["followup_answers"] = []
+
+        response_data["follow_up"] = f"🤖 Follow-up question 1: {user_data[user]['followups'][0]}"
+        return jsonify(response_data)
+
+    # Get current follow-up question
+    current_question_index = user_data[user]["followup_count"]
+    current_question = user_data[user]["followups"][current_question_index]
+
+    # Check if the answer is relevant
     if not is_answer_relevant(current_question, message):
-        return jsonify({"error": f"⚠️ Your answer doesn't seem relevant to: '{current_question}'. Please answer properly."})
+        response_data["error"] = f"⚠️ Your answer doesn't seem relevant to: '{current_question}'. Please answer properly."
+        return jsonify(response_data)
 
     # Store the valid answer
-    user_state["followup_answers"].append(message)
-    user_state["followup_count"] += 1
+    user_data[user]["followup_answers"].append(message)
+    user_data[user]["followup_count"] += 1
 
-    # Ask the next follow-up question if needed
-    if user_state["followup_count"] < 3:
-        next_question = user_state["followups"][user_state["followup_count"]]
-        return jsonify({"follow_up": f"🤖 Follow-up question {user_state['followup_count'] + 1}: {next_question}"})
+    # If still more follow-ups needed, ask the next one
+    if user_data[user]["followup_count"] < 3:
+        next_question = user_data[user]["followups"][user_data[user]["followup_count"]]
+        response_data["follow_up"] = f"🤖 Follow-up question {user_data[user]['followup_count'] + 1}: {next_question}"
+        return jsonify(response_data)
 
     # After three valid follow-ups, provide remedy
-    remedy = analyze_symptoms(user_state["symptoms"], user_state["followup_answers"])
-    response = {"remedy": f"🩺 {remedy}"}
+    remedy = analyze_symptoms(user_data[user]["symptoms"], user_data[user]["followup_answers"])
+    response_data["remedy"] = f"🩺 {remedy}"
 
-    # Remove user data after completion
-    del user_data[user]
+    # Reset user data after completing the conversation
+    user_data.pop(user, None)
 
-    return jsonify(response)
+    return jsonify(response_data)
 
 @app.route('/location', methods=['POST'])
 def location_query():
