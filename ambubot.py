@@ -111,6 +111,7 @@ def main():
     if user not in user_data:
         user_data[user] = {"symptoms": "", "followups": [], "answers": []}
         user_step[user] = 0  # Start at step 0
+        print('hi')
 
     print(f"User step: {user_step[user]}")
 
