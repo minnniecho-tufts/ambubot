@@ -105,28 +105,72 @@ def main():
 
     print(f"Message from {user}: {message}")
 
-    # Ignore bot messages and empty inputs
-    if data.get("bot") or not message:
-        return jsonify({"status": "ignored"})
+    if user not in user_data:
+        user_data[user] = {"step": 0, "symptoms": "", "followups": [], "answers": []}
 
-    # Check if the message is health-related
-    if not is_health_related(message):
-        return jsonify({"text": "🏥 AMBUBOT - Virtual Healthcare Assistant \n 🔹 HELLO! I'm Dr. Doc Bot. Describe your symptoms, and I'll provide easy at-home remedies! \n 📝 Enter your symptoms below: "})
+    user_state = user_data[user]
 
-    ask_3 = True
+    # Step 0: First Message - Initial Greeting
+    if user_state["step"] == 0:
+        if not is_health_related(message):
+            return jsonify({"text": "🏥 AMBUBOT - Virtual Healthcare Assistant \n 🔹 HELLO! I'm Dr. Doc Bot. Describe your symptoms, and I'll provide easy at-home remedies! \n 📝 Enter your symptoms below: "})
+        
+        # Store symptoms and generate follow-ups
+        user_state["symptoms"] = message
+        user_state["followups"] = ask_followup(message)
+        user_state["step"] = 1  # Move to the follow-up phase
+        
+        return jsonify({"text": f"🤖 Follow-up question 1: {user_state['followups'][0]}"})
 
-    if ask_3:
-        ask_3 = False
-        # Ask follow-up questions
-        followup_questions = ask_followup(message)
+    # Step 1, 2, 3: Answer Follow-Up Questions
+    if 1 <= user_state["step"] <= 3:
+        user_state["answers"].append(message)
 
+        if user_state["step"] < 3:
+            # Ask the next follow-up question
+            next_question = user_state["followups"][user_state["step"]]
+            user_state["step"] += 1
+            return jsonify({"text": f"🤖 Follow-up question {user_state['step']}: {next_question}"})
+        
+        # Step 4: Provide Remedy After Last Follow-Up
+        user_state["step"] = 4
+        remedy = analyze_symptoms(user_state["symptoms"], " ".join(user_state["answers"]))
+        
+        # Reset conversation state after providing the remedy
+        user_data.pop(user, None)
+        
+        return jsonify({"text": f"🩺 {remedy}"})
 
-        if followup_questions:
-            print(f"🤖 Follow-up questions:\n\n- " + "\n- ".join(followup_questions))
+    return jsonify({"text": "⚠️ Something went wrong. Please start over."})
 
-    # If no follow-ups, analyze symptoms directly
-    remedy = analyze_symptoms(message, "unknown duration", "unknown severity")
-    return jsonify({"text": f"🩺 {remedy}"})
+# @app.route('/query', methods=['POST'])
+# def main():
+#     data = request.get_json()
+#     user = data.get("user_name", "Unknown")
+#     message = data.get("text", "").strip()
+
+#     print(f"Message from {user}: {message}")
+
+#     # Ignore bot messages and empty inputs
+#     if data.get("bot") or not message:
+#         return jsonify({"status": "ignored"})
+
+#     # Check if the message is health-related
+#     if not is_health_related(message):
+#         return jsonify({"text": "🏥 AMBUBOT - Virtual Healthcare Assistant \n 🔹 HELLO! I'm Dr. Doc Bot. Describe your symptoms, and I'll provide easy at-home remedies! \n 📝 Enter your symptoms below: "})
+
+#     ask_3 = True
+
+#     if ask_3:
+#         ask_3 = False 
+#         # Ask follow-up questions
+#         followup_questions = ask_followup(message)
+
+#         if followup_questions:
+#             return jsonify({"text": f"🤖 Follow-up questions:\n\n- " + "\n- ".join(followup_questions)})
+
+#     remedy = analyze_symptoms(message, "unknown duration", "unknown severity")
+#     return jsonify({"text": f"🩺 {remedy}"})
 
 @app.route('/location', methods=['POST'])
 def location_query():
