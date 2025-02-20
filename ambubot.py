@@ -1,13 +1,11 @@
 import os
 import requests
-from flask import Flask, request, jsonify, session
+from flask import Flask, request, jsonify
 from llmproxy import generate, pdf_upload
 
 app = Flask(__name__)
 
-user_data = {}
 
-# Load environment variables
 pdf_path = os.getenv("PDF_PATH", "HealingRemedies-compressed4mb.pdf")
 session_id_ = os.getenv("SESSION_ID", "ambubot-home-remedies")
 
@@ -29,22 +27,6 @@ def is_health_related(user_input):
         temperature=0.0,
         lastk=0,
         session_id="IntentCheck",
-        rag_usage=False
-    )
-    return response.get("response", "").strip().lower() == "yes"
-
-def is_answer_relevant(question, answer):
-    """Checks if the user's answer is relevant to the question."""
-    response = generate(
-        model="4o-mini",
-        system="""
-            Determine if the provided answer is relevant to the given question.
-            Respond with only 'Yes' or 'No'.
-        """,
-        query=f"Question: '{question}'\nAnswer: '{answer}'\nIs the answer relevant?",
-        temperature=0.0,
-        lastk=0,
-        session_id="RelevanceCheck",
         rag_usage=False
     )
     return response.get("response", "").strip().lower() == "yes"
@@ -119,104 +101,30 @@ def find_nearest_hospitals_osm(location):
     except Exception as e:
         return [f"⚠️ Error retrieving hospital data: {e}"]
 
-# @app.route('/query', methods=['POST'])
-# def main():
-#     data = request.get_json()
-#     user = data.get("user_name", "Unknown")
-#     message = data.get("text", "").strip()
-
-#     print(f"Message from {user}: {message}")
-
-#     # Ignore bot messages and empty inputs
-#     if data.get("bot") or not message:
-#         return jsonify({"status": "ignored"})
-
-#     # Check if the message is health-related
-#     if not is_health_related(message):
-#         return jsonify({"text": "🤖 I'm here for healthcare-related questions. Ask me about symptoms and remedies!"})
-
-#     # Ask follow-up questions
-#     followup_questions = ask_followup(message)
-#     if followup_questions:
-#         return jsonify({"text": f"🤖 Follow-up questions:\n\n- " + "\n- ".join(followup_questions)})
-
-#     # If no follow-ups, analyze symptoms directly
-#     remedy = analyze_symptoms(message, "unknown duration", "unknown severity")
-#     return jsonify({"text": f"🩺 {remedy}"})
-
-# Dictionary to track user states
-user_data = {}
-
 @app.route('/query', methods=['POST'])
 def main():
-    """Handles user symptom queries, ensuring the welcome message appears only once."""
     data = request.get_json()
     user = data.get("user_name", "Unknown")
     message = data.get("text", "").strip()
 
     print(f"Message from {user}: {message}")
 
-    # Initialize user state if new
-    if user not in user_data:
-        user_data[user] = {
-            "welcomed": False,  # Tracks if user has seen the welcome message
-            "symptoms": None,
-            "followups": [],
-            "followup_count": 0,
-            "followup_answers": []
-        }
+    # Ignore bot messages and empty inputs
+    if data.get("bot") or not message:
+        return jsonify({"status": "ignored"})
 
-    response_data = {}
+    # Check if the message is health-related
+    if not is_health_related(message):
+        return jsonify({"text": "🤖 I'm here for healthcare-related questions. Ask me about symptoms and remedies!"})
 
-    # **Step 1: If user has never been welcomed, send welcome message**
-    if not user_data[user]["welcomed"]:
-        user_data[user]["welcomed"] = True  # Mark the user as welcomed
-        return jsonify({
-            "text": "🏥 AMBUBOT - Virtual Healthcare Assistant",
-            "message": "🔹 HELLO! I'm Dr. Doc Bot. Describe your symptoms, and I'll provide easy at-home remedies & nearby hospitals!",
-            "prompt": "📝 Enter your symptoms below:"
-        })
+    # Ask follow-up questions
+    followup_questions = ask_followup(message)
+    if followup_questions:
+        return jsonify({"text": f"🤖 Follow-up questions:\n\n- " + "\n- ".join(followup_questions)})
 
-    # **Step 2: If first symptom input, generate follow-up questions**
-    if user_data[user]["symptoms"] is None:
-        user_data[user]["symptoms"] = message
-        user_data[user]["followups"] = ask_followup(message)
-        user_data[user]["followup_count"] = 0
-        user_data[user]["followup_answers"] = []
-
-        return jsonify({
-            "follow_up": f"🤖 Follow-up question 1: {user_data[user]['followups'][0]}"
-        })
-
-    # **Step 3: Process follow-up answers**
-    current_question_index = user_data[user]["followup_count"]
-    current_question = user_data[user]["followups"][current_question_index]
-
-    # Check if the answer is relevant
-    if not is_answer_relevant(current_question, message):
-        return jsonify({
-            "error": f"⚠️ Your answer doesn't seem relevant to: '{current_question}'. Please answer properly."
-        })
-
-    # Store the valid answer
-    user_data[user]["followup_answers"].append(message)
-    user_data[user]["followup_count"] += 1
-
-    # If still more follow-ups needed, ask the next one
-    if user_data[user]["followup_count"] < 3:
-        next_question = user_data[user]["followups"][user_data[user]["followup_count"]]
-        return jsonify({
-            "follow_up": f"🤖 Follow-up question {user_data[user]['followup_count'] + 1}: {next_question}"
-        })
-
-    # **Step 4: After three valid follow-ups, provide remedy**
-    remedy = analyze_symptoms(user_data[user]["symptoms"], user_data[user]["followup_answers"])
-    
-    # Clear user state after finishing
-    user_data.pop(user, None)
-
-    return jsonify({"remedy": f"🩺 {remedy}"})
-
+    # If no follow-ups, analyze symptoms directly
+    remedy = analyze_symptoms(message, "unknown duration", "unknown severity")
+    return jsonify({"text": f"🩺 {remedy}"})
 
 @app.route('/location', methods=['POST'])
 def location_query():
