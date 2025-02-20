@@ -32,7 +32,7 @@ def is_health_related(user_input):
     )
     return response.get("response", "").strip().lower() == "yes"
 
-def analyze_symptoms(symptoms, duration, severity):
+def analyze_symptoms(symptoms):
     """Provides home remedies based on symptoms."""
     response = generate(
         model="4o-mini",
@@ -40,7 +40,7 @@ def analyze_symptoms(symptoms, duration, severity):
             Provide home remedies for given symptoms.
             If no remedy is found in the document, provide general self-care advice.
         """,
-        query=f"Symptoms: {symptoms}. Duration: {duration}. Severity: {severity}/10. What home remedies can I try?",
+        query=f"Symptoms: {symptoms}. What home remedies can I try?",
         temperature=0.2,
         lastk=0,
         session_id=session_id_,
@@ -120,7 +120,7 @@ def main():
         # Store symptoms and generate follow-ups
         user_state["symptoms"] = message
         user_state["followups"] = ask_followup(message)
-        user_state["step"] = 1  # Move to the follow-up phase
+        user_state["step"] += 1  # Move to the follow-up phase
         
         return jsonify({"text": f"🤖 Follow-up question 1: {user_state['followups'][0]}"})
 
@@ -136,7 +136,8 @@ def main():
         
         # Step 4: Provide Remedy After Last Follow-Up
         user_state["step"] = 4
-        remedy = analyze_symptoms(user_state["symptoms"], " ".join(user_state["answers"]))
+        remedy = analyze_symptoms(" ".join([user_state["symptoms"]] + user_state["answers"]))
+
         
         # Reset conversation state after providing the remedy
         user_data.pop(user, None)
