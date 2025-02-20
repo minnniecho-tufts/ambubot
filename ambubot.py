@@ -99,7 +99,7 @@ def find_nearest_hospitals_osm(location):
 
 @app.route('/query', methods=['POST'])
 def main():
-    print(user_state["step"])
+    
     data = request.get_json()
     user = data.get("user_name", "Unknown")
     message = data.get("text", "").strip()
@@ -110,6 +110,7 @@ def main():
         user_data[user] = {"step": 0, "symptoms": "", "followups": [], "answers": []}
 
     user_state = user_data[user]
+    print(user_state["step"])
 
     # Step 0: First Message - Initial Greeting
     if user_state["step"] == 0:
