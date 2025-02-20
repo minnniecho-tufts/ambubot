@@ -1,6 +1,6 @@
 import os
 import requests
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, session
 from llmproxy import generate, pdf_upload
 
 app = Flask(__name__)
@@ -128,42 +128,63 @@ def find_nearest_hospitals_osm(location):
 
 @app.route('/query', methods=['POST'])
 def main():
-    """Processes symptom queries and returns a greeting first, then asks follow-up questions."""
+    """Handles symptom queries, asks 3 follow-up questions sequentially, ensuring valid answers before proceeding."""
     data = request.get_json()
     user = data.get("user_name", "Unknown")
     message = data.get("text", "").strip()
 
     print(f"Message from {user}: {message}")
 
-    # First response when the user hasn't entered symptoms yet
-    if not message:
-        return jsonify({
-            "text": "🏥 AMBUBOT - Virtual Healthcare Assistant",
-            "message": "🔹 HELLO! I'm Dr. Doc Bot. Describe your symptoms, and I'll provide easy at-home remedies & nearby hospitals!",
-            "prompt": "📝 Enter your symptoms below:"
-        })
+    # Initialize user session if not set
+    if "conversation_state" not in session:
+        session["conversation_state"] = {}
+    user_state = session["conversation_state"].get(user, {})
 
-    # Ignore bot messages and empty inputs
-    if data.get("bot") or not message:
-        return jsonify({"status": "ignored"})
-
-    # Check if the message is health-related
-    if not is_health_related(message):
-        return jsonify({"text": "🤖 I'm here for healthcare-related questions. Ask me about symptoms and remedies!"})
-
-    # Ask follow-up questions (only on the first symptom input)
-    followup_questions = ask_followup(message)
-    if followup_questions:
-         return jsonify({"text": f"🤖 Follow-up questions:\n\n- " + "\n- ".join(followup_questions)})
-
-    # If no follow-ups, analyze symptoms directly
-    remedy = analyze_symptoms(message, "unknown duration", "unknown severity")
-    return jsonify({
+    # Default response structure
+    response_data = {
         "text": "🏥 AMBUBOT - Virtual Healthcare Assistant",
         "message": "🔹 HELLO! I'm Dr. Doc Bot. Describe your symptoms, and I'll provide easy at-home remedies & nearby hospitals!",
-        "prompt": "📝 Enter your symptoms below:",
-        "remedy": remedy
-    })
+        "prompt": "📝 Enter your symptoms below:"
+    }
+
+    # If first message, store the symptom and generate follow-ups
+    if "symptoms" not in user_state:
+        user_state["symptoms"] = message
+        user_state["followups"] = ask_followup(message)
+        user_state["followup_count"] = 0
+        user_state["followup_answers"] = []
+        session["conversation_state"][user] = user_state
+        response_data["follow_up"] = f"🤖 Follow-up question 1: {user_state['followups'][0]}"
+        return jsonify(response_data)
+
+    # Get current follow-up question
+    current_question_index = user_state["followup_count"]
+    current_question = user_state["followups"][current_question_index]
+
+    # Check if the answer is relevant
+    if not is_answer_relevant(current_question, message):
+        response_data["error"] = f"⚠️ Your answer doesn't seem relevant to: '{current_question}'. Please answer properly."
+        return jsonify(response_data)
+
+    # Store the valid answer
+    user_state["followup_answers"].append(message)
+    user_state["followup_count"] += 1
+    session["conversation_state"][user] = user_state
+
+    # If still more follow-ups needed, ask the next one
+    if user_state["followup_count"] < 3:
+        next_question = user_state["followups"][user_state["followup_count"]]
+        response_data["follow_up"] = f"🤖 Follow-up question {user_state['followup_count'] + 1}: {next_question}"
+        return jsonify(response_data)
+
+    # After three valid follow-ups, provide remedy
+    remedy = analyze_symptoms(user_state["symptoms"], user_state["followup_answers"])
+    response_data["remedy"] = f"🩺 {remedy}"
+
+    # Reset user session after completing the conversation
+    session["conversation_state"].pop(user, None)
+
+    return jsonify(response_data)
 
 @app.route('/location', methods=['POST'])
 def location_query():
